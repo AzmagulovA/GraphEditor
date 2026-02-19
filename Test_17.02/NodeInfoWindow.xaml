@@ -1,0 +1,81 @@
+﻿<Window x:Class="GraphEditor.NodeInfoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройка узла" Height="450" Width="600"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- Заголовок -->
+            <RowDefinition Height="Auto"/>
+            <!-- Основные поля -->
+            <RowDefinition Height="*"/>
+            <!-- Список параметров -->
+            <RowDefinition Height="Auto"/>
+            <!-- Кнопки списка -->
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Свойства узла" FontSize="20" FontWeight="Bold" Margin="0,0,0,15"/>
+
+        <!-- Основная информация -->
+        <Border Grid.Row="1" BorderBrush="#DDD" BorderThickness="1" Padding="10" Margin="0,0,0,15" Background="#FAFAFA">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="80"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="10"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="ID Узла:" VerticalAlignment="Center" Foreground="Gray"/>
+                <TextBox Grid.Column="1" Text="{Binding Id, Mode=OneWay}" IsReadOnly="True" Background="#EEE" Margin="5,0,0,0"/>
+
+                <TextBlock Grid.Row="2" Text="Название:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="5,0,0,0"/>
+
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="Важность (К):" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding Importance, UpdateSourceTrigger=PropertyChanged}" Margin="5,0,0,0"/>
+            </Grid>
+        </Border>
+
+        <!-- Список параметров -->
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Parameters}" AutoGenerateColumns="False" 
+                  CanUserAddRows="False" BorderBrush="#CCC" BorderThickness="1">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" IsReadOnly="True" Width="70"/>
+                <DataGridTextColumn Header="Название параметра" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Коэф." Binding="{Binding Importance}" Width="60"/>
+
+                <!-- Колонка с кнопкой загрузки -->
+                <DataGridTemplateColumn Header="Данные (.xsl)" Width="120">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="📥 Загрузить" Margin="2" Click="BtnLoadXsl_Click"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Кнопка удаления -->
+                <DataGridTemplateColumn Width="40">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="❌" Foreground="Red" Click="BtnDeleteParam_Click"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Кнопки управления списком -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="➕ Добавить параметр" Padding="10,5" Click="BtnAddParam_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
