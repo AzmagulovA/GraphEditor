@@ -12,27 +12,122 @@ using System.Xml.Linq;
 namespace GraphEditor
 {
 
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, INotifyPropertyChanged
     {
         private Point _lastMousePosition;
         private bool _isPanning;
+        private List<GraphNode> _nodes = new List<GraphNode>();
         private List<GraphEdge> _edges = new List<GraphEdge>();
 
         // Переменные для рисования связей
         private bool _isDrawingEdge = false;
         private GraphNode _sourceNodeForEdge = null;
         private Line _tempLine = null;
+        private string _recommendationsText = "";
+        private List<List<GraphNode>> _pendingGroupsToCollapse = new List<List<GraphNode>>();
+
+        public string RecommendationsText
+        {
+            get => _recommendationsText;
+            set { _recommendationsText = value; OnPropertyChanged(); }
+        }
+
+        private double _currentKtc;
+        public double CurrentKtc
+        {
+            get => _currentKtc;
+            set { _currentKtc = value; OnPropertyChanged(); }
+        }
+
+
+        private Brush _ktcColor = Brushes.Black;
+        public Brush KtcColor
+        {
+            get => _ktcColor;
+            set { _ktcColor = value; OnPropertyChanged(); }
+        }
+
+        private string _ktcStatusText = "Ожидание данных...";
+        public string KtcStatusText
+        {
+            get => _ktcStatusText;
+            set { _ktcStatusText = value; OnPropertyChanged(); }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
 
         public MainWindow()
         {
             InitializeComponent();
+            this.DataContext = this;
+        }
+
+        private void UpdateAnalytics()
+        {
+            CurrentKtc = GraphAnalyzer.CalculateKhd(_nodes, _edges);
+
+            if (_nodes.Count < 3)
+            {
+                KtcColor = Brushes.Gray;
+                KtcStatusText = "Недостаточно узлов для анализа структуры.";
+            }
+            else if (CurrentKtc <= 0.3)
+            {
+                KtcColor = Brushes.Green;
+                KtcStatusText = "Оптимальный граф. Каждый узел несет уникальную топологическую функцию.";
+            }
+            else if (CurrentKtc <= 0.6)
+            {
+                KtcColor = Brushes.DarkOrange;
+                KtcStatusText = "Средняя избыточность. Присутствуют транзитные узлы или небольшие дублирования.";
+            }
+            else
+            {
+                KtcColor = Brushes.Red;
+                KtcStatusText = "Гипердетализация! Обнаружены обширные кластеры или армии клонов. Требуется свертка.";
+            }
+            var recs = GraphAnalyzer.GetGroupingRecommendations(_nodes, _edges);
+            if (recs.Any())
+            {
+                RecommendationsText = string.Join("\n\n", recs);
+            }
+            else
+            {
+                RecommendationsText = "Рекомендаций по группировке пока нет.";
+            }
+            _pendingGroupsToCollapse = GraphAnalyzer.GetNodesToGroup(_nodes, _edges);
+
+            if (_pendingGroupsToCollapse.Any())
+            {
+                RecommendationsText = $"Найдено {_pendingGroupsToCollapse.Count} избыточных групп.\nНажмите кнопку для объединения.";
+                BtnAutoGroup.Visibility = Visibility.Visible; 
+            }
+            else
+            {
+                RecommendationsText = "Рекомендаций по группировке пока нет.";
+                BtnAutoGroup.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        // Обработчик нажатия на кнопку авто-свертки
+        private void BtnAutoGroup_Click(object sender, RoutedEventArgs e)
+        {
+            if (_pendingGroupsToCollapse.Any())
+            {
+                var groupToCollapse = _pendingGroupsToCollapse.First();
+                GroupNodesToMetaNode(groupToCollapse);
+
+            }
         }
 
         #region 1. Логика панорамирования (ПКМ)
 
         private void Viewport_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            // Блокируем панорамирование, если мы сейчас тянем связь
             if (_isDrawingEdge) return;
 
             var border = sender as Border;
@@ -40,7 +135,7 @@ namespace GraphEditor
             {
                 _lastMousePosition = e.GetPosition(border);
                 _isPanning = true;
-                border.CaptureMouse(); // Захват мыши для Border
+                border.CaptureMouse(); 
                 Cursor = Cursors.SizeAll;
             }
         }
@@ -53,7 +148,7 @@ namespace GraphEditor
                 _isPanning = false;
                 if (border != null)
                 {
-                    border.ReleaseMouseCapture(); // Сброс захвата
+                    border.ReleaseMouseCapture(); 
                 }
                 Cursor = Cursors.Arrow;
             }
@@ -61,7 +156,6 @@ namespace GraphEditor
 
         private void Viewport_MouseMove(object sender, MouseEventArgs e)
         {
-            // A. Панорамирование (если зажата ПКМ)
             if (_isPanning)
             {
                 var border = sender as IInputElement;
@@ -72,7 +166,6 @@ namespace GraphEditor
                 _lastMousePosition = currentPosition;
             }
 
-            // B. Обновление линии связи (если зажата ЛКМ и режим создания связи)
             if (_isDrawingEdge && _tempLine != null)
             {
                 var pos = e.GetPosition(GraphCanvas);
@@ -85,54 +178,43 @@ namespace GraphEditor
 
         #region 2. Логика Связей (С ИСПОЛЬЗОВАНИЕМ HIT TEST)
 
-        // Начало рисования (Клик по узлу)
         private void Node_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             var thumb = sender as Thumb;
             if (thumb == null) return;
             var node = thumb.DataContext as GraphNode;
-            // --- ДОБАВЛЕНО: Логика удаления узла ---
             if (RbRemoveNode.IsChecked == true)
             {
                 DeleteNode(node);
-                e.Handled = true; // Прерываем событие, чтобы не сработали другие клики
+                e.Handled = true; 
                 return;
             }
-            // Проверяем режим интерфейса
             if (RbAddEdge.IsChecked == true)
             {
                 if (thumb != null)
                 {
                     StartDrawingEdge(thumb.DataContext as GraphNode, GetThumbCenter(thumb));
-                    e.Handled = true; // Останавливаем всплытие, чтобы не сработал клик по Canvas или Drag
+                    e.Handled = true;
                 }
             }
         }
 
-        // ОТПУСКАНИЕ МЫШИ (ГЛОБАЛЬНОЕ)
-        // Здесь решается судьба связи: создаться или удалиться
         private void Viewport_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (_isDrawingEdge)
             {
-                // 1. Где мы отпустили мышь?
                 Point point = e.GetPosition(GraphCanvas);
 
-                // 2. Ищем, есть ли под курсором узел
                 GraphNode targetNode = FindNodeUnderMouse(point);
 
-                // 3. Логика создания
                 if (targetNode != null && 
                     targetNode != _sourceNodeForEdge)
                 {
-                    // Успех: соединяем
                     CreateEdge(_sourceNodeForEdge, targetNode);
                 }
 
-                // 4. В любом случае завершаем рисование (удаляем пунктир)
                 StopDrawingEdge();
 
-                // Сбрасываем захват мыши с Canvas (критично!)
                 GraphCanvas.ReleaseMouseCapture();
             }
         }
@@ -142,7 +224,6 @@ namespace GraphEditor
             _isDrawingEdge = true;
             _sourceNodeForEdge = sourceNode;
 
-            // Создаем временную линию
             _tempLine = new Line
             {
                 Stroke = Brushes.Gray,
@@ -157,7 +238,6 @@ namespace GraphEditor
 
             GraphCanvas.Children.Add(_tempLine);
 
-            // ЗАХВАТ МЫШИ: Все события теперь идут в Canvas, даже если курсор над узлом
             GraphCanvas.CaptureMouse();
         }
 
@@ -173,27 +253,24 @@ namespace GraphEditor
             }
         }
 
-        // Ручной поиск узла под мышкой (Hit Testing)
         private GraphNode FindNodeUnderMouse(Point point)
         {
             GraphNode result = null;
 
-            // HitTest ищет самый верхний визуальный элемент под точкой
             VisualTreeHelper.HitTest(GraphCanvas, null,
                 new HitTestResultCallback(hit =>
                 {
-                    // Идем вверх по дереву от точки попадания, пока не найдем Thumb
                     var visual = hit.VisualHit;
                     while (visual != null)
                     {
                         if (visual is Thumb thumb && thumb.DataContext is GraphNode node)
                         {
                             result = node;
-                            return HitTestResultBehavior.Stop; // Нашли! Останавливаемся.
+                            return HitTestResultBehavior.Stop; 
                         }
                         visual = VisualTreeHelper.GetParent(visual);
                     }
-                    return HitTestResultBehavior.Continue; // Ищем дальше (если попали в линию или фон)
+                    return HitTestResultBehavior.Continue; 
                 }),
                 new PointHitTestParameters(point));
 
@@ -225,6 +302,8 @@ namespace GraphEditor
             GraphCanvas.Children.Add(line);
 
             UpdateLinePosition(edge);
+
+            UpdateAnalytics();
         }
 
         private void Edge_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -233,31 +312,26 @@ namespace GraphEditor
             var edge = _edges.FirstOrDefault(x => x.VisualLine == line);
             if (edge == null) return;
 
-            // Удаление связи
             if (RbRemoveEdge.IsChecked == true)
             {
                 RemoveEdge(edge);
                 return;
             }
 
-            // Перетаскивание конца (Редактирование)
             if (RbAddEdge.IsChecked == true || RbSelect.IsChecked == true)
             {
                 Point clickPos = e.GetPosition(GraphCanvas);
                 Point posA = new Point(line.X1, line.Y1);
                 Point posB = new Point(line.X2, line.Y2);
 
-                RemoveEdge(edge); // Удаляем старую
+                RemoveEdge(edge); 
 
-                // Определяем, за какой конец взялись
                 if ((clickPos - posA).Length < (clickPos - posB).Length)
                 {
-                    // Ближе к А -> тянем от B
                     StartDrawingEdge(edge.NodeB, posB);
                 }
                 else
                 {
-                    // Ближе к B -> тянем от A
                     StartDrawingEdge(edge.NodeA, posA);
                 }
 
@@ -271,31 +345,28 @@ namespace GraphEditor
         {
             GraphCanvas.Children.Remove(edge.VisualLine);
             _edges.Remove(edge);
+            UpdateAnalytics();
         }
         private void DeleteNode(GraphNode node)
         {
-            // 1. Находим все связи, подключенные к этому узлу
-            // Важно: делаем .ToList(), чтобы создать копию списка, так как мы будем удалять элементы из _edges внутри цикла
             var edgesToRemove = _edges.Where(e => e.NodeA == node || e.NodeB == node).ToList();
 
-            // 2. Удаляем каждую связь
             foreach (var edge in edgesToRemove)
             {
-                // Удаляем визуальную линию с холста
                 if (edge.VisualLine != null)
                 {
                     GraphCanvas.Children.Remove(edge.VisualLine);
                 }
-                // Удаляем из списка данных
                 _edges.Remove(edge);
             }
 
-            // 3. Удаляем визуальное представление самого узла
             var thumb = GetThumbByNode(node);
             if (thumb != null)
             {
                 GraphCanvas.Children.Remove(thumb);
             }
+            _nodes.Remove(node);
+            UpdateAnalytics();
         }
 
         #endregion
@@ -304,7 +375,6 @@ namespace GraphEditor
 
         private void Viewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            // Создание узла только в режиме "Добавить узел"
             if (RbAddNode.IsChecked == true)
             {
                 CreateNode(e.GetPosition(GraphCanvas));
@@ -332,7 +402,6 @@ namespace GraphEditor
             newNode.MouseDoubleClick += Node_MouseDoubleClick;
             newNode.DragDelta += Node_DragDelta;
 
-            // Только старт связи (конец теперь обрабатывается через HitTest)
             newNode.PreviewMouseLeftButtonDown += Node_PreviewMouseLeftButtonDown;
 
             Canvas.SetLeft(newNode, position.X - 30);
@@ -343,11 +412,12 @@ namespace GraphEditor
 
             bool showName = RbShowName.IsChecked == true;
             nodeData.SetDisplayMode(showName);
+            _nodes.Add(nodeData);
+            UpdateAnalytics();
         }
 
         private void Node_DragDelta(object sender, DragDeltaEventArgs e)
         {
-            // Перетаскивание узлов только в режиме "Курсор"
             if (RbSelect.IsChecked == true)
             {
                 var thumb = sender as Thumb;
@@ -433,6 +503,83 @@ namespace GraphEditor
             if (double.IsNaN(top)) top = 0;
             return new Point(left + 30, top + 30);
         }
+
+        /// <summary>
+        /// Выполняет свертку списка узлов в единый Мета-узел (Фактор-граф)
+        /// </summary>
+        private void GroupNodesToMetaNode(List<GraphNode> nodesToGroup)
+        {
+            if (nodesToGroup == null || nodesToGroup.Count < 2) return;
+
+            var metaNode = new GraphNode();
+            metaNode.Name = $"Мета-узел ({nodesToGroup.Count} шт.)";
+            metaNode.Importance = nodesToGroup.Sum(n => n.Importance);
+
+            double avgX = 0, avgY = 0;
+            int count = 0;
+            foreach (var node in nodesToGroup)
+            {
+                var thumb = GetThumbByNode(node);
+                if (thumb != null)
+                {
+                    avgX += Canvas.GetLeft(thumb);
+                    avgY += Canvas.GetTop(thumb);
+                    count++;
+                }
+            }
+            if (count > 0) { avgX /= count; avgY /= count; }
+
+            var metaThumb = new Thumb
+            {
+                Style = (Style)FindResource("NodeStyle"),
+                DataContext = metaNode,
+                Width = 65,
+                Height = 65 // Делаем его чуть крупнее обычных
+            };
+
+            metaThumb.MouseDoubleClick += Node_MouseDoubleClick;
+            metaThumb.DragDelta += Node_DragDelta;
+            metaThumb.PreviewMouseLeftButtonDown += Node_PreviewMouseLeftButtonDown;
+
+            Canvas.SetLeft(metaThumb, avgX);
+            Canvas.SetTop(metaThumb, avgY);
+            Panel.SetZIndex(metaThumb, 10);
+
+            GraphCanvas.Children.Add(metaThumb);
+            _nodes.Add(metaNode);
+            metaNode.SetDisplayMode(RbShowName.IsChecked == true);
+
+            var externalNeighbors = new HashSet<GraphNode>();
+            var edgesToRemove = _edges.Where(e => nodesToGroup.Contains(e.NodeA) || nodesToGroup.Contains(e.NodeB)).ToList();
+
+            foreach (var edge in edgesToRemove)
+            {
+                bool isA_Inside = nodesToGroup.Contains(edge.NodeA);
+                bool isB_Inside = nodesToGroup.Contains(edge.NodeB);
+
+                if (isA_Inside && !isB_Inside) externalNeighbors.Add(edge.NodeB);
+                else if (!isA_Inside && isB_Inside) externalNeighbors.Add(edge.NodeA);
+
+                GraphCanvas.Children.Remove(edge.VisualLine);
+                _edges.Remove(edge);
+            }
+
+            foreach (var neighbor in externalNeighbors)
+            {
+                CreateEdge(metaNode, neighbor); 
+            }
+
+            foreach (var node in nodesToGroup)
+            {
+                var thumb = GetThumbByNode(node);
+                if (thumb != null) GraphCanvas.Children.Remove(thumb);
+                _nodes.Remove(node);
+            }
+
+            UpdateAnalytics();
+        }
+
+
         #endregion
     }
 }

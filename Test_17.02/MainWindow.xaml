@@ -17,19 +17,17 @@
             <ColumnDefinition Width="240"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-
-        <!-- ПАНЕЛЬ ИНСТРУМЕНТОВ -->
         <Border Grid.Column="0" Background="White" BorderBrush="#DDD" BorderThickness="0,0,1,0" Padding="15">
             <StackPanel>
                 <TextBlock Text="Инструменты" FontSize="16" FontWeight="Bold" Margin="0,0,0,15"/>
 
                 <GroupBox Header="Действия" Margin="0,0,0,20">
                     <StackPanel Margin="5">
-                        <RadioButton Content="🖱 Курсор (Info)" IsChecked="True" Style="{StaticResource ModeButtonStyle}" x:Name="RbSelect"/>
-                        <RadioButton Content="➕ Добавить узел" Style="{StaticResource ModeButtonStyle}" x:Name="RbAddNode"/>
-                        <RadioButton Content="❌ Удалить узел" Style="{StaticResource ModeButtonStyle}" x:Name="RbRemoveNode"/>
-                        <RadioButton Content="🔗 Связать узлы" Style="{StaticResource ModeButtonStyle}" x:Name="RbAddEdge"/>
-                        <RadioButton Content="✂ Удалить связь" Style="{StaticResource ModeButtonStyle}" x:Name="RbRemoveEdge"/>
+                        <RadioButton Content="Курсор (Info)" IsChecked="True" Style="{StaticResource ModeButtonStyle}" x:Name="RbSelect"/>
+                        <RadioButton Content="Добавить узел" Style="{StaticResource ModeButtonStyle}" x:Name="RbAddNode"/>
+                        <RadioButton Content="Удалить узел" Style="{StaticResource ModeButtonStyle}" x:Name="RbRemoveNode"/>
+                        <RadioButton Content="Связать узлы" Style="{StaticResource ModeButtonStyle}" x:Name="RbAddEdge"/>
+                        <RadioButton Content=" Удалить связь" Style="{StaticResource ModeButtonStyle}" x:Name="RbRemoveEdge"/>
                     </StackPanel>
                 </GroupBox>
 
@@ -45,7 +43,6 @@
         </Border>
 
         <Grid Grid.Column="1">
-            <!-- 1. Холст (Нижний слой) -->
             <Border ClipToBounds="True" Background="#EEE"
             MouseRightButtonDown="Viewport_MouseRightButtonDown"
             MouseRightButtonUp="Viewport_MouseRightButtonUp"
@@ -60,7 +57,6 @@
                 </Canvas>
             </Border>
 
-            <!-- 2. Оверлей с кнопками (Верхний слой, Правый верхний угол) -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20">
                 <TextBlock Text="Отображать:" VerticalAlignment="Center" Margin="0,0,10,0" FontWeight="SemiBold"/>
 
@@ -74,5 +70,27 @@
             <TextBlock Text="Рабочая область" HorizontalAlignment="Right" VerticalAlignment="Bottom" 
                Margin="10" Foreground="#AAA" FontWeight="Bold" IsHitTestVisible="False"/>
         </Grid>
+        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="20" 
+        Background="#F5F7FA" BorderBrush="#007ACC" BorderThickness="2" 
+        CornerRadius="8" Padding="15" Width="200"
+        Grid.Column="1">
+            <StackPanel>
+                <TextBlock Text="Аналитика графа" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" Foreground="#333"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <TextBlock Text="Коэф. Ktc: " FontSize="16"/>
+                    <TextBlock Text="{Binding CurrentKtc}" FontSize="16" FontWeight="Bold" Foreground="{Binding KtcColor}"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding KtcStatusText}" FontSize="12" TextWrapping="Wrap" Foreground="#555" Margin="0,0,0,10"/>
+
+                <TextBlock Text="Советы системы:" FontWeight="Bold" FontSize="12" Foreground="#007ACC"/>
+                <TextBlock Text="{Binding RecommendationsText}" FontSize="11" TextWrapping="Wrap" Foreground="#333" FontStyle="Italic" Margin="0,5,0,0"/>
+                <Button x:Name="BtnAutoGroup" Content="✨ Выполнить авто-свертку" 
+                        Margin="0,10,0,0" Padding="5" Background="#E1F0FF" BorderBrush="#007ACC"
+                        Click="BtnAutoGroup_Click" Visibility="Collapsed"/>
+            </StackPanel>
+        </Border>
+        
     </Grid>
 </Window>
